@@ -1,0 +1,1 @@
+請將 Teachable Machine 匯出模型檔（model.json / metadata.json / weights.bin）放到本目錄。
