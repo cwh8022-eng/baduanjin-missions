@@ -1,4 +1,7 @@
-<!DOCTYPE html>
+# Write a clean, syntax-checked index.html so the user can download and replace
+from pathlib import Path
+
+html = r"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
@@ -8,9 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
-  <!-- UI（如需完全離線可改成本地編譯 CSS） -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- AI -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
   <style>
@@ -21,8 +22,6 @@
     .stage-bg{background: radial-gradient(1200px 400px at 50% 0%, rgba(239,125,77,.08), transparent),
                           linear-gradient(180deg, rgba(0,0,0,.06), transparent 35%);}
     .btn{padding:.6rem 1rem; border-radius:.8rem}
-
-    /* ===== 全螢幕攝影模式（iOS 安全區） ===== */
     body.fs { overflow:hidden; }
     body.fs #panel {
       position: fixed; inset: 0; z-index: 1000; background: #000;
@@ -31,14 +30,9 @@
     }
     body.fs #panel .grid { grid-template-columns: 1fr !important; }
     body.fs #camWrap { padding: 0 !important; background: #000 !important; }
-    body.fs #camBox {
-      width: 100%; height: 100dvh; height: 100vh;  /* 兼容 */
-      aspect-ratio: auto !important;
-      max-height: none !important;
-      border-radius: 0 !important;
-    }
-    body.fs #statCard { display: none; } /* 全螢幕時隱藏右側統計 */
-    .cam-canvas { width:100%; height:100%; display:block; } /* canvas 佔滿盒子 */
+    body.fs #camBox { width: 100%; height: 100dvh; height: 100vh; aspect-ratio: auto !important; max-height: none !important; border-radius: 0 !important; }
+    body.fs #statCard { display: none; }
+    .cam-canvas { width:100%; height:100%; display:block; }
   </style>
 </head>
 <body>
@@ -51,9 +45,7 @@
           <button id="btn-reset" class="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200">重置進度</button>
         </div>
       </div>
-      <p class="mt-2 text-slate-600 max-w-2xl">
-        本版重點：<b>直式 9:16 + 全螢幕攝影</b>、<b>單一招式機率顯示</b>（不再跳出其他招式名稱）。
-      </p>
+      <p class="mt-2 text-slate-600 max-w-2xl">本版：直式 9:16 + 全螢幕、只顯示當前關卡的機率。</p>
       <div class="mt-6 bg-white card p-4">
         <div class="flex items-center justify-between">
           <div class="font-semibold">闖關進度</div>
@@ -69,31 +61,16 @@
 
   <main class="max-w-5xl mx-auto px-4 pb-16">
     <section class="grid md:grid-cols-3 gap-4 mt-6">
-      <div class="card p-4">
-        <div class="text-sm uppercase tracking-wider text-slate-500">模式</div>
-        <div class="mt-1 font-semibold">AI 自動判定</div>
-        <p class="text-sm text-slate-600 mt-1">開啟鏡頭，完成指定八式之一；達到門檻並連續維持即通關。</p>
-      </div>
-      <div class="card p-4">
-        <div class="text-sm uppercase tracking-wider text-slate-500">設備建議</div>
-        <div class="mt-1 font-semibold">手機直立 / 筆電鏡頭</div>
-        <p class="text-sm text-slate-600 mt-1">背景簡潔、光線充足；避免逆光；穿著色塊分明。</p>
-      </div>
-      <div class="card p-4">
-        <div class="text-sm uppercase tracking-wider text-slate-500">資料</div>
-        <div class="mt-1 font-semibold">本機記錄</div>
-        <p class="text-sm text-slate-600 mt-1">進度與成績僅存於瀏覽器 LocalStorage。</p>
-      </div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">模式</div><div class="mt-1 font-semibold">AI 自動判定</div><p class="text-sm text-slate-600 mt-1">完成指定八式之一；達到門檻並連續維持即通關。</p></div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">設備建議</div><div class="mt-1 font-semibold">手機直立 / 筆電鏡頭</div><p class="text-sm text-slate-600 mt-1">背景簡潔、光線充足。</p></div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">資料</div><div class="mt-1 font-semibold">本機記錄</div><p class="text-sm text-slate-600 mt-1">僅存於 LocalStorage。</p></div>
     </section>
 
     <section id="levels" class="mt-6 grid md:grid-cols-2 gap-4"></section>
 
     <section id="panel" class="mt-6 card p-4 hidden">
       <div class="panel-head flex items-center justify-between">
-        <div>
-          <div id="panel-title" class="font-bold text-lg"></div>
-          <p id="panel-desc" class="text-sm text-slate-600"></p>
-        </div>
+        <div><div id="panel-title" class="font-bold text-lg"></div><p id="panel-desc" class="text-sm text-slate-600"></p></div>
         <div class="flex gap-2">
           <button id="btn-full" class="px-3 py-2 text-sm bg-black text-white rounded-lg">全螢幕</button>
           <button id="btn-close" class="px-3 py-2 text-sm bg-slate-100 rounded-lg hover:bg-slate-200">關閉</button>
@@ -102,7 +79,6 @@
 
       <div class="grid md:grid-cols-2 gap-4 mt-4">
         <div id="camWrap" class="card p-3">
-          <!-- 直式 9:16 容器（放 webcam.canvas） -->
           <div id="camBox" class="w-full rounded-xl overflow-hidden bg-black" style="aspect-ratio: 9 / 16; max-height: 80vh;"></div>
           <div class="flex items-center justify-between mt-2">
             <div class="text-sm">模型：<span id="model-name" class="font-semibold">未載入</span></div>
@@ -113,9 +89,7 @@
         <div id="statCard" class="card p-4">
           <div class="text-sm uppercase tracking-wider text-slate-500">即時結果（只顯示本關）</div>
           <div id="live-label" class="mt-2 text-2xl font-extrabold">—</div>
-          <div id="meter" class="mt-3 h-2 bg-slate-100 rounded-full">
-            <div id="meter-fill" class="h-2 bg-emerald-500 rounded-full transition-all" style="width:0%"></div>
-          </div>
+          <div id="meter" class="mt-3 h-2 bg-slate-100 rounded-full"><div id="meter-fill" class="h-2 bg-emerald-500 rounded-full transition-all" style="width:0%"></div></div>
           <ul id="sequence-list" class="mt-4 space-y-2 text-sm"></ul>
           <div class="mt-4 flex gap-2">
             <button id="btn-start" class="px-4 py-2 bg-orange-600 text-white rounded-xl shadow hover:bg-orange-700">開始偵測</button>
@@ -131,22 +105,21 @@
   <footer class="text-center text-xs text-slate-500 py-10">© 2025 Baduanjin Missions</footer>
 
 <script>
-/* ========= 設定 ========= */
+/* ===== 設定 ===== */
 const CONFIG = {
   STORAGE_KEY: 'baduanjin_missions_pwa_v3',
-  DEFAULT_MODEL_URL: './model/',        // 放 model.json / metadata.json / weights.bin
-  CAMERA: { width: 360, height: 640, flip: true, facingMode: 'user' }, // 直式 9:16
+  DEFAULT_MODEL_URL: './model/',
+  CAMERA: { width: 360, height: 640, flip: true, facingMode: 'user' },
   LEVELS: [
     { id:'b1', title:'一、雙手托天理三焦', badge:'B1', desc:'手臂上托，身形中正，持續穩定。', expect:'B1', threshold:0.85, holdFrames:24 },
-    { id:'b2', title:'二、左右開弓似射鵰', badge:'B2', desc:'左右張弓，目視箭隅。',             expect:'B2', threshold:0.85, holdFrames:24 },
-    { id:'b3', title:'三、調理脾胃須單舉', badge:'B3', desc:'一手上托一手下按，身體正直。',       expect:'B3', threshold:0.85, holdFrames:24 },
-    { id:'b4', title:'四、五勞七傷向後瞧', badge:'B4', desc:'頸項鬆沉，向後顧盼。',               expect:'B4', threshold:0.85, holdFrames:24 },
-    { id:'b5', title:'五、搖頭擺尾去心火', badge:'B5', desc:'腰胯協調、轉體穩定。',               expect:'B5', threshold:0.85, holdFrames:24 },
-    { id:'b6', title:'六、兩手攀足固腎腰', badge:'B6', desc:'屈伸協調，脊柱牽引。',               expect:'B6', threshold:0.85, holdFrames:24 },
-    { id:'b7', title:'七、攢拳怒目增氣力', badge:'B7', desc:'拳走弧線、沉肩墜肘。',               expect:'B7', threshold:0.85, holdFrames:24 },
-    { id:'b8', title:'八、背後七顛百病消', badge:'B8', desc:'腳跟輕顛、呼吸綿長。',               expect:'B8', threshold:0.85, holdFrames:24 }
+    { id:'b2', title:'二、左右開弓似射鵰', badge:'B2', desc:'左右張弓，目視箭隅。', expect:'B2', threshold:0.85, holdFrames:24 },
+    { id:'b3', title:'三、調理脾胃須單舉', badge:'B3', desc:'一手上托一手下按，身體正直。', expect:'B3', threshold:0.85, holdFrames:24 },
+    { id:'b4', title:'四、五勞七傷向後瞧', badge:'B4', desc:'頸項鬆沉，向後顧盼。', expect:'B4', threshold:0.85, holdFrames:24 },
+    { id:'b5', title:'五、搖頭擺尾去心火', badge:'B5', desc:'腰胯協調、轉體穩定。', expect:'B5', threshold:0.85, holdFrames:24 },
+    { id:'b6', title:'六、兩手攀足固腎腰', badge:'B6', desc:'屈伸協調，脊柱牽引。', expect:'B6', threshold:0.85, holdFrames:24 },
+    { id:'b7', title:'七、攢拳怒目增氣力', badge:'B7', desc:'拳走弧線、沉肩墜肘。', expect:'B7', threshold:0.85, holdFrames:24 },
+    { id:'b8', title:'八、背後七顛百病消', badge:'B8', desc:'腳跟輕顛、呼吸綿長。', expect:'B8', threshold:0.85, holdFrames:24 }
   ],
-  // B1~B8 與模型標籤對應（依你的 metadata.json 調整關鍵詞）
   LABEL_ALIASES: {
     B1: ['B1','D1','雙手托天理三焦','托天'],
     B2: ['B2','D2','左右開弓','射鵰'],
@@ -156,7 +129,7 @@ const CONFIG = {
     B6: ['B6','D6','兩手攀足','固腎腰'],
     B7: ['B7','D7','攢拳怒目','增氣力'],
     B8: ['B8','D8','背後七顛','百病消']
-  ],
+  },
   BADGE_RULES: [
     { id:'silver', label:'銀牌', need:4 },
     { id:'gold', label:'金牌', need:6 },
@@ -164,13 +137,13 @@ const CONFIG = {
   ]
 };
 
-/* ========= 進度 ========= */
+/* ===== 進度 ===== */
 let STATE = { model:null, labels:[], webcam:null, ctx:null, raf:null, running:false, currentLevel:null, holdCount:0, expected:null };
 function loadProgress(){ try { return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || { cleared:[] }; } catch(e){ return { cleared:[] }; } }
 function saveProgress(d){ localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(d)); }
 function resetProgress(){ saveProgress({ cleared:[] }); renderProgress(); }
 
-/* ========= UI ========= */
+/* ===== UI ===== */
 const $levels = document.getElementById('levels');
 const $map = document.getElementById('map');
 const $progress = document.getElementById('progress');
@@ -226,7 +199,7 @@ function renderBadges(){
 }
 function renderProgress(){ renderLevels(); renderMap(); renderBadges(); }
 
-/* ========= 事件 ========= */
+/* ===== 事件 ===== */
 document.getElementById('btn-reset').addEventListener('click', ()=>{ if(confirm('確定要重置全部進度？')) resetProgress(); });
 $levels.addEventListener('click', (e)=>{
   const btn = e.target.closest('button'); if(!btn) return;
@@ -234,7 +207,7 @@ $levels.addEventListener('click', (e)=>{
   if(action==='ai') openPanel(id);
 });
 
-/* ========= 面板 / 模型 ========= */
+/* ===== 面板 / 模型 ===== */
 const $panel = document.getElementById('panel');
 const $panelTitle = document.getElementById('panel-title');
 const $panelDesc = document.getElementById('panel-desc');
@@ -245,16 +218,12 @@ const $meterFill = document.getElementById('meter-fill');
 const $seqList = document.getElementById('sequence-list');
 
 $btnClose.addEventListener('click', closePanel);
-$btnFull.addEventListener('click', ()=> {
-  const fs = document.body.classList.toggle('fs');
-  $btnFull.textContent = fs ? '退出全螢幕' : '全螢幕';
-});
+$btnFull.addEventListener('click', ()=> { const fs = document.body.classList.toggle('fs'); $btnFull.textContent = fs ? '退出全螢幕' : '全螢幕'; });
 
-/* label 對應 */
 function normalize(s){ return (s||'').toLowerCase().replace(/\s+/g,''); }
 function resolveExpectedLabel(lv){
   const labels = STATE.labels || [];
-  if (labels.includes(lv.expect)) return lv.expect;  // 模型就叫 B1~B8
+  if (labels.includes(lv.expect)) return lv.expect;
   const aliases = CONFIG.LABEL_ALIASES[lv.badge] || CONFIG.LABEL_ALIASES[lv.expect] || [];
   const nAliases = aliases.map(normalize);
   for (const lab of labels){ const nLab = normalize(lab); if (nAliases.some(a=> nLab.includes(a))) return lab; }
@@ -275,7 +244,6 @@ async function openPanel(levelId){
 }
 function closePanel(){ stopLoop(); document.body.classList.remove('fs'); $panel.classList.add('hidden'); }
 
-/* ========= 初始化模型 + 9:16 相機 ========= */
 async function initModel(modelURL){
   try{
     stopLoop();
@@ -308,11 +276,10 @@ async function initModel(modelURL){
   }
 }
 
-/* ========= 推論循環（只看本關） + cover 繪製 ========= */
 async function startLoop(){ if(!STATE.model||!STATE.webcam) return; STATE.running=true; STATE.holdCount=0; loop(); }
 function stopLoop(){ STATE.running=false; if(STATE.raf) cancelAnimationFrame(STATE.raf); document.getElementById('status').textContent='已停止'; }
 
-function drawCover(){  // 把相機畫面塞滿 9:16，去黑邊
+function drawCover(){
   const video = STATE.webcam.webcam;
   const can = STATE.webcam.canvas;
   const ctx = STATE.ctx;
@@ -321,7 +288,6 @@ function drawCover(){  // 把相機畫面塞滿 9:16，去黑邊
   const scale = Math.max(cw / vw, ch / vh);
   const dw = vw * scale, dh = vh * scale;
   const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
-
   ctx.save();
   if (STATE.webcam.flip){ ctx.translate(cw,0); ctx.scale(-1,1); }
   ctx.drawImage(video, dx, dy, dw, dh);
@@ -330,24 +296,20 @@ function drawCover(){  // 把相機畫面塞滿 9:16，去黑邊
 
 async function loop(){
   if(!STATE.running) return;
-  drawCover(); // 先把畫面以 cover 方式塞滿 9:16
+  drawCover();
   const { posenetOutput } = await STATE.model.estimatePose(STATE.webcam.canvas);
   const prediction = await STATE.model.predict(posenetOutput);
-
   const lv = STATE.currentLevel;
   const expect = STATE.expected || lv.expect;
   const expPred = prediction.find(p => p.className === expect) || { probability: 0 };
-
-  $liveLabel.textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
-  $meterFill.style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
-
+  document.getElementById('live-label').textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
+  document.getElementById('meter-fill').style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
   if(expPred.probability >= lv.threshold){
     STATE.holdCount++;
     if(STATE.holdCount >= lv.holdFrames) return pass(lv.id);
   }else{
     STATE.holdCount = Math.max(0, STATE.holdCount-1);
   }
-
   STATE.raf = requestAnimationFrame(loop);
 }
 
@@ -359,22 +321,18 @@ function pass(levelId){
   renderProgress();
 }
 
-/* ========= PWA：穩健註冊（避免 sw.js 路徑錯誤） ========= */
+/* PWA：穩健註冊 */
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const base = location.pathname.endsWith('/')
-      ? location.pathname
-      : location.pathname.replace(/[^\/]+$/, '');
-    const swPath = base + 'sw.js';              // 確保與 index.html 同層
+    const base = location.pathname.endsWith('/') ? location.pathname : location.pathname.replace(/[^\/]+$/, '');
+    const swPath = base + 'sw.js';
     await navigator.serviceWorker.register(swPath, { scope: base });
-  } catch (e) {
-    console.warn('SW 註冊失敗', e); // 若 sw.js 不存在也不會影響功能
-  }
+  } catch (e) { console.warn('SW 註冊失敗', e); }
 }
 document.addEventListener('DOMContentLoaded', registerSW);
 
-/* ========= 安裝提示（可選） ========= */
+/* 安裝提示（可選） */
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault(); deferredPrompt = e;
@@ -382,8 +340,12 @@ window.addEventListener('beforeinstallprompt', (e)=>{
   btn.onclick = async () => { btn.disabled = true; if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; } };
 });
 
-/* ========= 啟動 ========= */
+/* 啟動 */
 renderProgress();
 </script>
 </body>
 </html>
+"""
+path = Path("/mnt/data/index_fixed.html")
+path.write_text(html, encoding="utf-8")
+print(str(path))
