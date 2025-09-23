@@ -1,15 +1,18 @@
-<!DOCTYPE html>
+# Build a full index.html with "incognito-safe" progress backup (export/import/share link)
+from pathlib import Path
+
+html = r"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>八段錦 AI 闖關 — 單頁版（連續闖關）</title>
+  <title>八段錦 AI 闖關 — 連續闖關（含無痕備份）</title>
   <meta name="theme-color" content="#ef7d4d" />
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
-  <!-- 上線可改本地編譯 CSS -->
+  <!-- 上線可改成本地編譯 CSS 以免 CDN 受限 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- AI -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -38,20 +41,34 @@
     #toast .box { background: #10b981; color: #fff; padding: .6rem 1rem; border-radius: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,.15); }
     #overlay { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.45); z-index:1500; }
     #overlay .count { color:#fff; font-size: clamp(48px, 9vw, 88px); font-weight: 900; }
+
+    /* 無痕/未持久儲存提示條 */
+    #persist-tip { display:none; }
+    #persist-tip.show { display:block; }
   </style>
 </head>
 <body>
   <header class="stage-bg">
     <div class="max-w-5xl mx-auto px-4 py-8 sm:py-10">
+      <div id="persist-tip" class="mb-3">
+        <div class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800 text-sm flex items-center justify-between gap-3">
+          <div>⚠️ 目前處於無痕或未持久儲存模式：關閉視窗後進度會消失。請用「匯出進度」或「複製進度連結」備份。</div>
+          <button id="tip-close" class="text-amber-800/80 px-2 py-1 rounded hover:bg-amber-100">知道了</button>
+        </div>
+      </div>
       <div class="flex items-center justify-between">
         <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">八段錦 AI 闖關 — 連續闖關</h1>
         <div class="flex items-center gap-2">
-          <button id="btn-install" class="hidden px-3 py-2 text-sm rounded-lg bg-black text-white">安裝到手機</button>
-          <button id="btn-reset" class="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200">重置進度</button>
+          <button id="btn-install" class="hidden px-3 py-2 text-sm rounded-lg bg-black text-white">安裝</button>
+          <button id="btn-export" class="px-3 py-2 text-sm rounded-lg bg-slate-900 text-white">匯出</button>
+          <label for="file-import" class="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 cursor-pointer">匯入</label>
+          <input id="file-import" type="file" accept="application/json" class="hidden">
+          <button id="btn-link" class="px-3 py-2 text-sm rounded-lg bg-emerald-600 text-white">複製進度連結</button>
+          <button id="btn-reset" class="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200">重置</button>
         </div>
       </div>
       <p class="mt-2 text-slate-600 max-w-2xl">預設「自動連續模式」：通關後自動倒數→下一式→自動續跑。</p>
-      <div class="mt-6 bg-white card p-4">
+      <div class="mt-4 bg-white card p-4">
         <div class="flex items-center justify-between">
           <div class="font-semibold">闖關進度</div>
           <div id="badges" class="flex flex-wrap gap-2"></div>
@@ -65,12 +82,6 @@
   </header>
 
   <main class="max-w-5xl mx-auto px-4 pb-16">
-    <section class="grid md:grid-cols-3 gap-4 mt-6">
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">模式</div><div class="mt-1 font-semibold">AI 自動判定</div><p class="text-sm text-slate-600 mt-1">完成指定八式；達門檻並持續即通關。</p></div>
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">設備建議</div><div class="mt-1 font-semibold">手機直立 / 筆電鏡頭</div><p class="text-sm text-slate-600 mt-1">背景簡潔、光線充足；避免逆光。</p></div>
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">資料</div><div class="mt-1 font-semibold">本機記錄</div><p class="text-sm text-slate-600 mt-1">進度僅存於瀏覽器 LocalStorage。</p></div>
-    </section>
-
     <section id="levels" class="mt-6 grid md:grid-cols-2 gap-4"></section>
 
     <section id="panel" class="mt-6 card p-4 hidden">
@@ -82,7 +93,7 @@
         <div class="flex items-center gap-2">
           <label class="flex items-center gap-2 text-sm">
             <input id="auto-run" type="checkbox" class="accent-orange-600" checked>
-            <span>自動連續模式</span>
+            <span>自動連續</span>
           </label>
           <button id="btn-switch" class="px-3 py-2 text-sm bg-slate-800 text-white rounded-lg">切換前/後鏡頭</button>
           <button id="btn-full" class="px-3 py-2 text-sm bg-black text-white rounded-lg">全螢幕</button>
@@ -124,7 +135,7 @@
 <script>
 /* ========= 設定 ========= */
 const CONFIG = {
-  STORAGE_KEY: 'baduanjin_missions_pwa_v6',
+  STORAGE_KEY: 'baduanjin_missions_pwa_v7',
   DEFAULT_MODEL_URL: './model/',
   CAMERA: { width: 360, height: 640, flip: true }, // facing 改由 STATE 控制
   LEVELS: [
@@ -160,9 +171,36 @@ let STATE = {
   currentLevel:null, holdCount:0, expected:null, cameraFacing:'user'
 };
 
-function loadProgress(){ try { return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || { cleared:[] }; } catch(e){ return { cleared:[] }; } }
-function saveProgress(d){ localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(d)); }
-function resetProgress(){ saveProgress({ cleared:[] }); renderProgress(); }
+/* ========= Progress 儲存（附備援） ========= */
+function safeIds(arr){
+  const valid = new Set(CONFIG.LEVELS.map(l=>l.id));
+  return (arr||[]).filter(x=> valid.has(x));
+}
+function loadProgress(){
+  try { return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || { cleared:[] }; }
+  catch(e){ return { cleared:[] }; }
+}
+function saveProgress(d){
+  try { localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(d)); } catch(e){ /* 無痕可能丟錯也沒關係 */ }
+}
+
+function applyHashProgress(){
+  const m = location.hash.match(/(?:^#|&)p=([^&]+)/);
+  if(!m) return;
+  try{
+    const list = decodeURIComponent(m[1]).split(',').filter(Boolean);
+    const merged = Array.from(new Set([...(loadProgress().cleared||[]), ...safeIds(list)]));
+    saveProgress({ cleared: merged });
+  }catch(e){}
+}
+async function checkPersistenceTip(){
+  try{
+    if (navigator.storage && navigator.storage.persisted) {
+      const ok = await navigator.storage.persisted();
+      if (!ok) document.getElementById('persist-tip').classList.add('show');
+    }
+  }catch(e){ /* 忽略 */ }
+}
 
 /* ========= UI ========= */
 const $levels = document.getElementById('levels');
@@ -187,8 +225,37 @@ const $toast    = document.getElementById('toast');
 const $toastText= document.getElementById('toast-text');
 const $overlay  = document.getElementById('overlay');
 const $countdown= document.getElementById('countdown');
+const $tipClose = document.getElementById('tip-close');
 
-document.getElementById('btn-reset').addEventListener('click', ()=>{ if(confirm('確定要重置全部進度？')) resetProgress(); });
+document.getElementById('btn-reset').addEventListener('click', ()=>{ if(confirm('確定要重置全部進度？')) { saveProgress({cleared:[]}); renderProgress(); }});
+document.getElementById('btn-export').addEventListener('click', ()=>{
+  const data = { v:1, cleared: safeIds(loadProgress().cleared), ts: Date.now() };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'baduanjin_progress.json'; a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+});
+document.getElementById('file-import').addEventListener('change', async (e)=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  try{
+    const txt = await f.text();
+    const obj = JSON.parse(txt);
+    if(!obj || !Array.isArray(obj.cleared)) throw new Error('格式不符');
+    saveProgress({ cleared: safeIds(obj.cleared) });
+    renderProgress();
+    toast('✅ 進度已匯入');
+  }catch(err){
+    alert('匯入失敗：' + (err.message||err));
+  }finally{ e.target.value=''; }
+});
+document.getElementById('btn-link').addEventListener('click', async ()=>{
+  const cleared = safeIds(loadProgress().cleared);
+  const url = location.origin + location.pathname + '#p=' + encodeURIComponent(cleared.join(','));
+  try{
+    await navigator.clipboard.writeText(url);
+    toast('🔗 進度連結已複製');
+  }catch{ prompt('複製下面的連結', url); }
+});
+$tipClose.addEventListener('click', ()=> document.getElementById('persist-tip').classList.remove('show'));
 
 function renderLevels(){
   const prog = loadProgress();
@@ -211,7 +278,6 @@ function renderLevels(){
     $levels.insertAdjacentHTML('beforeend', html);
   });
 }
-
 function renderMap(){
   const prog = loadProgress();
   $map.innerHTML = '';
@@ -239,7 +305,7 @@ function renderBadges(){
 }
 function renderProgress(){ renderLevels(); renderMap(); renderBadges(); }
 
-/* ========= イベント ========= */
+/* ========= 闖關互動 ========= */
 $levels.addEventListener('click', (e)=>{
   const btn = e.target.closest('button'); if(!btn) return;
   const id = btn.dataset.id; const action = btn.dataset.action;
@@ -253,7 +319,7 @@ $btnNext.addEventListener('click', ()=> gotoNext());
 $btnRedo.addEventListener('click', ()=> redoCurrent());
 $btnSwitch.addEventListener('click', switchCamera);
 
-/* ========= 公用 ========= */
+/* ========= 小工具 ========= */
 function toast(msg='完成！', ms=1600, color='#10b981'){
   $toastText.textContent = msg;
   $toast.querySelector('.box').style.background = color;
@@ -271,7 +337,7 @@ function showCountdown(n=2){
   }, 1000);
 }
 
-/* ========= 面板 / 模型 ========= */
+/* ========= 模型 / 面板 ========= */
 function normalize(s){ return (s||'').toLowerCase().replace(/\s+/g,''); }
 function resolveExpectedLabel(lv){
   const labels = STATE.labels || [];
@@ -292,17 +358,13 @@ async function openPanel(levelId){
   $panel.classList.remove('hidden');
   $seqList.innerHTML = `<li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>`;
 
-  // 初始化模型與鏡頭（只做一次）
-  if (!STATE.model) {
-    await initModel(CONFIG.DEFAULT_MODEL_URL);
-  }
-  // 設定本關的目標標籤
+  if (!STATE.model) await initModel(CONFIG.DEFAULT_MODEL_URL);
   STATE.expected = resolveExpectedLabel(lv);
   $seqList.innerHTML = `
     <li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>
     <li class="px-3 py-2 rounded-lg bg-emerald-50">模型標籤：<b>${STATE.expected}</b></li>`;
 
-  if ($autoRun.checked) startLoop(); // 自動模式：進入即開始
+  if (document.getElementById('auto-run').checked) startLoop();
 }
 
 function closePanel(){ stopLoop(); document.body.classList.remove('fs'); $panel.classList.add('hidden'); }
@@ -319,7 +381,6 @@ async function initModel(modelURL){
     const { width, height, flip } = CONFIG.CAMERA;
     STATE.webcam = new tmPose.Webcam(width, height, flip);
 
-    // HTTPS 檢查
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
       alert('請用 HTTPS（或 localhost）開啟，手機才允許相機。');
       throw new Error('Insecure context');
@@ -340,18 +401,14 @@ async function initModel(modelURL){
   }catch(err){
     console.error(err);
     const msg = (err && err.name) ? err.name : err;
-    if (msg === 'NotAllowedError') {
-      alert('相機權限被拒。請到瀏覽器網站設定允許相機，再重整。');
-    } else if (msg === 'NotFoundError' || msg === 'OverconstrainedError') {
-      alert('找不到鏡頭。請按「切換前/後鏡頭」或改用另一瀏覽器再試。');
-    } else if (msg !== 'Insecure context') {
-      alert('模型或鏡頭載入失敗：' + msg);
-    }
+    if (msg === 'NotAllowedError')      alert('相機權限被拒。請到瀏覽器網站設定允許相機，再重整。');
+    else if (msg === 'NotFoundError' || msg === 'OverconstrainedError') alert('找不到鏡頭。請按「切換前/後鏡頭」或改用另一瀏覽器再試。');
+    else if (msg !== 'Insecure context') alert('模型或鏡頭載入失敗：' + msg);
     document.getElementById('status').textContent = '錯誤';
   }
 }
 
-/* ========= 偵測循環（不因換關而停） ========= */
+/* ========= 偵測循環 ========= */
 async function startLoop(){ if(!STATE.model||!STATE.webcam) return; if(STATE.running) return; STATE.running=true; STATE.holdCount=0; loop(); }
 function stopLoop(){ STATE.running=false; if(STATE.raf) cancelAnimationFrame(STATE.raf); document.getElementById('status').textContent='已停止'; }
 
@@ -380,8 +437,8 @@ async function loop(){
   const expect = STATE.expected || lv.expect;
   const expPred = prediction.find(p => p.className === expect) || { probability: 0 };
 
-  $liveLabel.textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
-  $meterFill.style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
+  document.getElementById('live-label').textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
+  document.getElementById('meter-fill').style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
 
   if(expPred.probability >= lv.threshold){
     STATE.holdCount++;
@@ -389,7 +446,6 @@ async function loop(){
   }else{
     STATE.holdCount = Math.max(0, STATE.holdCount-1);
   }
-
   STATE.raf = requestAnimationFrame(loop);
 }
 
@@ -402,18 +458,12 @@ function pass(levelId){
 
   const idx = CONFIG.LEVELS.findIndex(l => l.id === levelId);
   const next = CONFIG.LEVELS[idx+1];
-
-  if ($autoRun.checked && next){
-    // 不中斷偵測，只是換目標前做個短倒數
+  if (document.getElementById('auto-run').checked && next){
     showCountdown(2);
     setTimeout(()=> gotoLevel(next), 2000);
   } else if (!next) {
-    toast('🎉 全部完成！', 2000, '#f59e0b');
-    stopLoop();
-  } else {
-    // 手動模式：停下來，等待使用者按下一招/開始
-    stopLoop();
-  }
+    toast('🎉 全部完成！', 2000, '#f59e0b'); stopLoop();
+  } else { stopLoop(); }
 }
 
 /* ========= 關卡切換 ========= */
@@ -426,21 +476,19 @@ function gotoLevel(lv){
     <li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>
     <li class="px-3 py-2 rounded-lg bg-emerald-50">模型標籤：<b>${STATE.expected}</b></li>`;
   STATE.holdCount = 0;
-  if ($autoRun.checked) startLoop();
+  if (document.getElementById('auto-run').checked) startLoop();
 }
-
 function gotoNext(){
   if(!STATE.currentLevel) return;
   const idx = CONFIG.LEVELS.findIndex(l=> l.id===STATE.currentLevel.id);
   const next = CONFIG.LEVELS[idx+1];
-  if (next) gotoLevel(next);
-  else toast('已是最後一招', 1200, '#f59e0b');
+  if (next) gotoLevel(next); else toast('已是最後一招', 1200, '#f59e0b');
 }
 function redoCurrent(){
   if(!STATE.currentLevel) return;
   STATE.holdCount = 0;
   toast('重新開始本招', 800, '#6366f1');
-  if ($autoRun.checked) startLoop();
+  if (document.getElementById('auto-run').checked) startLoop();
 }
 
 /* ========= 鏡頭切換 ========= */
@@ -481,7 +529,13 @@ window.addEventListener('beforeinstallprompt', (e)=>{
 });
 
 /* ========= 啟動 ========= */
+applyHashProgress();
 renderProgress();
+checkPersistenceTip();
 </script>
 </body>
 </html>
+"""
+p = Path("/mnt/data/index_incognito_ready.html")
+p.write_text(html, encoding="utf-8")
+print(str(p))
