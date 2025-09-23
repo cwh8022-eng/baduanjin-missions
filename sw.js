@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
-  <!-- UI（正式上線可改為本地編譯 CSS 以消除警告） -->
+  <!-- UI（如需完全離線可改成本地編譯 CSS） -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- AI -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -22,7 +22,8 @@
                           linear-gradient(180deg, rgba(0,0,0,.06), transparent 35%);}
     .btn{padding:.6rem 1rem; border-radius:.8rem}
 
-    /* ===== 全螢幕攝影模式 ===== */
+    /* ===== 全螢幕攝影模式（iOS 安全區） ===== */
+    body.fs { overflow:hidden; }
     body.fs #panel {
       position: fixed; inset: 0; z-index: 1000; background: #000;
       padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
@@ -31,14 +32,13 @@
     body.fs #panel .grid { grid-template-columns: 1fr !important; }
     body.fs #camWrap { padding: 0 !important; background: #000 !important; }
     body.fs #camBox {
-      width: 100%; height: 100dvh; height: 100vh;  /* 兼容瀏覽器 */
+      width: 100%; height: 100dvh; height: 100vh;  /* 兼容 */
       aspect-ratio: auto !important;
       max-height: none !important;
       border-radius: 0 !important;
     }
     body.fs #statCard { display: none; } /* 全螢幕時隱藏右側統計 */
-    body.fs .panel-head { color:#fff }
-    .cam-canvas { width:100%; height:100%; display:block; } /* 讓 canvas 佔滿盒子 */
+    .cam-canvas { width:100%; height:100%; display:block; } /* canvas 佔滿盒子 */
   </style>
 </head>
 <body>
@@ -102,7 +102,7 @@
 
       <div class="grid md:grid-cols-2 gap-4 mt-4">
         <div id="camWrap" class="card p-3">
-          <!-- 直式 9:16 容器：放 webcam.canvas -->
+          <!-- 直式 9:16 容器（放 webcam.canvas） -->
           <div id="camBox" class="w-full rounded-xl overflow-hidden bg-black" style="aspect-ratio: 9 / 16; max-height: 80vh;"></div>
           <div class="flex items-center justify-between mt-2">
             <div class="text-sm">模型：<span id="model-name" class="font-semibold">未載入</span></div>
@@ -133,9 +133,9 @@
 <script>
 /* ========= 設定 ========= */
 const CONFIG = {
-  STORAGE_KEY: 'baduanjin_missions_pwa_v2',
+  STORAGE_KEY: 'baduanjin_missions_pwa_v3',
   DEFAULT_MODEL_URL: './model/',        // 放 model.json / metadata.json / weights.bin
-  CAMERA: { width: 360, height: 640, flip: true, facingMode: 'user' }, // 9:16 直式
+  CAMERA: { width: 360, height: 640, flip: true, facingMode: 'user' }, // 直式 9:16
   LEVELS: [
     { id:'b1', title:'一、雙手托天理三焦', badge:'B1', desc:'手臂上托，身形中正，持續穩定。', expect:'B1', threshold:0.85, holdFrames:24 },
     { id:'b2', title:'二、左右開弓似射鵰', badge:'B2', desc:'左右張弓，目視箭隅。',             expect:'B2', threshold:0.85, holdFrames:24 },
@@ -146,7 +146,7 @@ const CONFIG = {
     { id:'b7', title:'七、攢拳怒目增氣力', badge:'B7', desc:'拳走弧線、沉肩墜肘。',               expect:'B7', threshold:0.85, holdFrames:24 },
     { id:'b8', title:'八、背後七顛百病消', badge:'B8', desc:'腳跟輕顛、呼吸綿長。',               expect:'B8', threshold:0.85, holdFrames:24 }
   ],
-  // B1~B8 與模型標籤的對應（可依你的 metadata.json 再補關鍵詞）
+  // B1~B8 與模型標籤對應（依你的 metadata.json 調整關鍵詞）
   LABEL_ALIASES: {
     B1: ['B1','D1','雙手托天理三焦','托天'],
     B2: ['B2','D2','左右開弓','射鵰'],
@@ -164,7 +164,7 @@ const CONFIG = {
   ]
 };
 
-/* ========= 本機進度 ========= */
+/* ========= 進度 ========= */
 let STATE = { model:null, labels:[], webcam:null, ctx:null, raf:null, running:false, currentLevel:null, holdCount:0, expected:null };
 function loadProgress(){ try { return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || { cleared:[] }; } catch(e){ return { cleared:[] }; } }
 function saveProgress(d){ localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(d)); }
@@ -250,33 +250,32 @@ $btnFull.addEventListener('click', ()=> {
   $btnFull.textContent = fs ? '退出全螢幕' : '全螢幕';
 });
 
+/* label 對應 */
+function normalize(s){ return (s||'').toLowerCase().replace(/\s+/g,''); }
+function resolveExpectedLabel(lv){
+  const labels = STATE.labels || [];
+  if (labels.includes(lv.expect)) return lv.expect;  // 模型就叫 B1~B8
+  const aliases = CONFIG.LABEL_ALIASES[lv.badge] || CONFIG.LABEL_ALIASES[lv.expect] || [];
+  const nAliases = aliases.map(normalize);
+  for (const lab of labels){ const nLab = normalize(lab); if (nAliases.some(a=> nLab.includes(a))) return lab; }
+  const idx = CONFIG.LEVELS.findIndex(x=>x.id===lv.id)+1;
+  const byD = labels.find(l => normalize(l).includes('d'+idx));
+  return byD || lv.expect;
+}
+
 async function openPanel(levelId){
   const lv = CONFIG.LEVELS.find(x=>x.id===levelId); STATE.currentLevel = lv;
   $panelTitle.textContent = lv.title; $panelDesc.textContent = lv.desc; $panel.classList.remove('hidden');
-  $seqList.innerHTML = `<li class="px-3 py-2 rounded-lg bg-slate-50">目標：${lv.title}</li>`;
+  $seqList.innerHTML = `<li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>`;
   await initModel(CONFIG.DEFAULT_MODEL_URL);
-  STATE.expected = resolveExpectedLabel(lv); // 對應本關在模型中的實際標籤
+  STATE.expected = resolveExpectedLabel(lv);
   $seqList.innerHTML = `
     <li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>
     <li class="px-3 py-2 rounded-lg bg-emerald-50">模型標籤：<b>${STATE.expected}</b></li>`;
 }
 function closePanel(){ stopLoop(); document.body.classList.remove('fs'); $panel.classList.add('hidden'); }
 
-function normalize(s){ return (s||'').toLowerCase().replace(/\s+/g,''); }
-function resolveExpectedLabel(lv){
-  const labels = STATE.labels || [];
-  // 1) 直接命中（模型標籤就是 B1~B8）
-  if (labels.includes(lv.expect)) return lv.expect;
-  // 2) 依 alias 關鍵詞（D1/中文等）
-  const aliases = CONFIG.LABEL_ALIASES[lv.badge] || CONFIG.LABEL_ALIASES[lv.expect] || [];
-  const nAliases = aliases.map(normalize);
-  for (const lab of labels){ const nLab = normalize(lab); if (nAliases.some(a=> nLab.includes(a))) return lab; }
-  // 3) 依序號猜測
-  const idx = CONFIG.LEVELS.findIndex(x=>x.id===lv.id)+1;
-  const byD = labels.find(l => normalize(l).includes('d'+idx));
-  return byD || lv.expect; // 找不到就退回 B 標籤
-}
-
+/* ========= 初始化模型 + 9:16 相機 ========= */
 async function initModel(modelURL){
   try{
     stopLoop();
@@ -286,7 +285,6 @@ async function initModel(modelURL){
     STATE.model = await tmPose.load(URL+'model.json', URL+'metadata.json');
     STATE.labels = STATE.model.getClassLabels();
 
-    // 直式 9:16；用 webcam.canvas 顯示
     const { width, height, flip, facingMode } = CONFIG.CAMERA;
     STATE.webcam = new tmPose.Webcam(width, height, flip);
     await STATE.webcam.setup({ facingMode });
@@ -298,16 +296,11 @@ async function initModel(modelURL){
     box.innerHTML = '';
     STATE.webcam.canvas.className = 'cam-canvas';
     box.appendChild(STATE.webcam.canvas);
-
     STATE.ctx = STATE.webcam.canvas.getContext('2d');
 
     document.getElementById('status').textContent = '就緒';
     document.getElementById('btn-start').onclick = startLoop;
     document.getElementById('btn-stop').onclick = stopLoop;
-
-    if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('./sw.js'); } catch(e) { /* ignore */ }
-    }
   }catch(err){
     console.error(err);
     alert('模型或鏡頭載入失敗，請檢查 URL / 權限');
@@ -315,11 +308,11 @@ async function initModel(modelURL){
   }
 }
 
-/* ========= 推論循環（只顯示本關） + 9:16 cover 繪製 ========= */
+/* ========= 推論循環（只看本關） + cover 繪製 ========= */
 async function startLoop(){ if(!STATE.model||!STATE.webcam) return; STATE.running=true; STATE.holdCount=0; loop(); }
 function stopLoop(){ STATE.running=false; if(STATE.raf) cancelAnimationFrame(STATE.raf); document.getElementById('status').textContent='已停止'; }
 
-function drawCover(){  // 把相機畫面填滿 9:16，去黑邊
+function drawCover(){  // 把相機畫面塞滿 9:16，去黑邊
   const video = STATE.webcam.webcam;
   const can = STATE.webcam.canvas;
   const ctx = STATE.ctx;
@@ -337,13 +330,10 @@ function drawCover(){  // 把相機畫面填滿 9:16，去黑邊
 
 async function loop(){
   if(!STATE.running) return;
-  // 1) 先把畫面以 cover 方式塞滿 9:16
-  drawCover();
-  // 2) 用填滿後的 canvas 跑姿勢估計
+  drawCover(); // 先把畫面以 cover 方式塞滿 9:16
   const { posenetOutput } = await STATE.model.estimatePose(STATE.webcam.canvas);
   const prediction = await STATE.model.predict(posenetOutput);
 
-  // 只顯示「本關」對應標籤的機率
   const lv = STATE.currentLevel;
   const expect = STATE.expected || lv.expect;
   const expPred = prediction.find(p => p.className === expect) || { probability: 0 };
@@ -351,7 +341,6 @@ async function loop(){
   $liveLabel.textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
   $meterFill.style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
 
-  // 判定：只用該式的機率
   if(expPred.probability >= lv.threshold){
     STATE.holdCount++;
     if(STATE.holdCount >= lv.holdFrames) return pass(lv.id);
@@ -370,7 +359,22 @@ function pass(levelId){
   renderProgress();
 }
 
-/* ========= PWA 安裝（可選） ========= */
+/* ========= PWA：穩健註冊（避免 sw.js 路徑錯誤） ========= */
+async function registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const base = location.pathname.endsWith('/')
+      ? location.pathname
+      : location.pathname.replace(/[^\/]+$/, '');
+    const swPath = base + 'sw.js';              // 確保與 index.html 同層
+    await navigator.serviceWorker.register(swPath, { scope: base });
+  } catch (e) {
+    console.warn('SW 註冊失敗', e); // 若 sw.js 不存在也不會影響功能
+  }
+}
+document.addEventListener('DOMContentLoaded', registerSW);
+
+/* ========= 安裝提示（可選） ========= */
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault(); deferredPrompt = e;
