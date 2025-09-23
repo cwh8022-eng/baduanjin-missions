@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>八段錦 AI 闖關 — 單頁版（PWA）</title>
+  <title>八段錦 AI 闖關 — 單頁版（連續闖關）</title>
   <meta name="theme-color" content="#ef7d4d" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
-  <!-- UI（如需完全離線可改成本地編譯 CSS） -->
+  <!-- 上線可改本地編譯 CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- AI -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -21,6 +22,7 @@
     .stage-bg{background: radial-gradient(1200px 400px at 50% 0%, rgba(239,125,77,.08), transparent),
                           linear-gradient(180deg, rgba(0,0,0,.06), transparent 35%);}
     .btn{padding:.6rem 1rem; border-radius:.8rem}
+
     /* 全螢幕攝影（iOS 安全區） */
     body.fs { overflow:hidden; }
     body.fs #panel { position: fixed; inset: 0; z-index: 1000; background: #000;
@@ -30,19 +32,25 @@
     body.fs #camBox { width: 100%; height: 100dvh; height: 100vh; aspect-ratio: auto !important; max-height: none !important; border-radius: 0 !important; }
     body.fs #statCard { display: none; }
     .cam-canvas { width:100%; height:100%; display:block; }
+
+    /* Toast / Overlay */
+    #toast { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2000; }
+    #toast .box { background: #10b981; color: #fff; padding: .6rem 1rem; border-radius: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,.15); }
+    #overlay { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.45); z-index:1500; }
+    #overlay .count { color:#fff; font-size: clamp(48px, 9vw, 88px); font-weight: 900; }
   </style>
 </head>
 <body>
   <header class="stage-bg">
     <div class="max-w-5xl mx-auto px-4 py-8 sm:py-10">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">八段錦 AI 闖關 — PWA</h1>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">八段錦 AI 闖關 — 連續闖關</h1>
         <div class="flex items-center gap-2">
           <button id="btn-install" class="hidden px-3 py-2 text-sm rounded-lg bg-black text-white">安裝到手機</button>
           <button id="btn-reset" class="px-3 py-2 text-sm rounded-lg bg-slate-100 hover:bg-slate-200">重置進度</button>
         </div>
       </div>
-      <p class="mt-2 text-slate-600 max-w-2xl">本版：直式 9:16 + 全螢幕、只顯示當前關卡的機率。</p>
+      <p class="mt-2 text-slate-600 max-w-2xl">預設「自動連續模式」：通關後自動倒數→下一式→自動續跑。</p>
       <div class="mt-6 bg-white card p-4">
         <div class="flex items-center justify-between">
           <div class="font-semibold">闖關進度</div>
@@ -58,17 +66,25 @@
 
   <main class="max-w-5xl mx-auto px-4 pb-16">
     <section class="grid md:grid-cols-3 gap-4 mt-6">
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">模式</div><div class="mt-1 font-semibold">AI 自動判定</div><p class="text-sm text-slate-600 mt-1">完成指定八式之一；達到門檻並連續維持即通關。</p></div>
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">設備建議</div><div class="mt-1 font-semibold">手機直立 / 筆電鏡頭</div><p class="text-sm text-slate-600 mt-1">背景簡潔、光線充足。</p></div>
-      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">資料</div><div class="mt-1 font-semibold">本機記錄</div><p class="text-sm text-slate-600 mt-1">僅存於 LocalStorage。</p></div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">模式</div><div class="mt-1 font-semibold">AI 自動判定</div><p class="text-sm text-slate-600 mt-1">完成指定八式；達門檻並持續即通關。</p></div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">設備建議</div><div class="mt-1 font-semibold">手機直立 / 筆電鏡頭</div><p class="text-sm text-slate-600 mt-1">背景簡潔、光線充足；避免逆光。</p></div>
+      <div class="card p-4"><div class="text-sm uppercase tracking-wider text-slate-500">資料</div><div class="mt-1 font-semibold">本機記錄</div><p class="text-sm text-slate-600 mt-1">進度僅存於瀏覽器 LocalStorage。</p></div>
     </section>
 
     <section id="levels" class="mt-6 grid md:grid-cols-2 gap-4"></section>
 
     <section id="panel" class="mt-6 card p-4 hidden">
-      <div class="panel-head flex items-center justify-between">
-        <div><div id="panel-title" class="font-bold text-lg"></div><p id="panel-desc" class="text-sm text-slate-600"></p></div>
-        <div class="flex gap-2">
+      <div class="panel-head flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div id="panel-title" class="font-bold text-lg"></div>
+          <p id="panel-desc" class="text-sm text-slate-600"></p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-2 text-sm">
+            <input id="auto-run" type="checkbox" class="accent-orange-600" checked>
+            <span>自動連續模式</span>
+          </label>
+          <button id="btn-switch" class="px-3 py-2 text-sm bg-slate-800 text-white rounded-lg">切換前/後鏡頭</button>
           <button id="btn-full" class="px-3 py-2 text-sm bg-black text-white rounded-lg">全螢幕</button>
           <button id="btn-close" class="px-3 py-2 text-sm bg-slate-100 rounded-lg hover:bg-slate-200">關閉</button>
         </div>
@@ -84,37 +100,42 @@
         </div>
 
         <div id="statCard" class="card p-4">
-          <div class="text-sm uppercase tracking-wider text-slate-500">即時結果（只顯示本關）</div>
+          <div class="text-sm uppercase tracking-wider text-slate-500">即時結果（本關）</div>
           <div id="live-label" class="mt-2 text-2xl font-extrabold">—</div>
           <div id="meter" class="mt-3 h-2 bg-slate-100 rounded-full"><div id="meter-fill" class="h-2 bg-emerald-500 rounded-full transition-all" style="width:0%"></div></div>
           <ul id="sequence-list" class="mt-4 space-y-2 text-sm"></ul>
-          <div class="mt-4 flex gap-2">
+          <div class="mt-4 flex flex-wrap gap-2">
             <button id="btn-start" class="px-4 py-2 bg-orange-600 text-white rounded-xl shadow hover:bg-orange-700">開始偵測</button>
             <button id="btn-stop" class="px-4 py-2 bg-slate-200 rounded-xl hover:bg-slate-300">停止</button>
+            <button id="btn-next" class="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700">下一招</button>
+            <button id="btn-redo" class="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">重做本招</button>
           </div>
         </div>
       </div>
     </section>
 
     <audio id="sfx-win" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3"></audio>
+    <div id="toast" class="hidden"><div class="box" id="toast-text">恭喜通關！</div></div>
+    <div id="overlay"><div class="count" id="countdown">3</div></div>
   </main>
 
   <footer class="text-center text-xs text-slate-500 py-10">© 2025 Baduanjin Missions</footer>
 
 <script>
+/* ========= 設定 ========= */
 const CONFIG = {
-  STORAGE_KEY: 'baduanjin_missions_pwa_v3',
+  STORAGE_KEY: 'baduanjin_missions_pwa_v6',
   DEFAULT_MODEL_URL: './model/',
-  CAMERA: { width: 360, height: 640, flip: true, facingMode: 'user' },
+  CAMERA: { width: 360, height: 640, flip: true }, // facing 改由 STATE 控制
   LEVELS: [
     { id:'b1', title:'一、雙手托天理三焦', badge:'B1', desc:'手臂上托，身形中正，持續穩定。', expect:'B1', threshold:0.85, holdFrames:24 },
-    { id:'b2', title:'二、左右開弓似射鵰', badge:'B2', desc:'左右張弓，目視箭隅。', expect:'B2', threshold:0.85, holdFrames:24 },
-    { id:'b3', title:'三、調理脾胃須單舉', badge:'B3', desc:'一手上托一手下按，身體正直。', expect:'B3', threshold:0.85, holdFrames:24 },
-    { id:'b4', title:'四、五勞七傷向後瞧', badge:'B4', desc:'頸項鬆沉，向後顧盼。', expect:'B4', threshold:0.85, holdFrames:24 },
-    { id:'b5', title:'五、搖頭擺尾去心火', badge:'B5', desc:'腰胯協調、轉體穩定。', expect:'B5', threshold:0.85, holdFrames:24 },
-    { id:'b6', title:'六、兩手攀足固腎腰', badge:'B6', desc:'屈伸協調，脊柱牽引。', expect:'B6', threshold:0.85, holdFrames:24 },
-    { id:'b7', title:'七、攢拳怒目增氣力', badge:'B7', desc:'拳走弧線、沉肩墜肘。', expect:'B7', threshold:0.85, holdFrames:24 },
-    { id:'b8', title:'八、背後七顛百病消', badge:'B8', desc:'腳跟輕顛、呼吸綿長。', expect:'B8', threshold:0.85, holdFrames:24 }
+    { id:'b2', title:'二、左右開弓似射鵰', badge:'B2', desc:'左右張弓，目視箭隅。',             expect:'B2', threshold:0.85, holdFrames:24 },
+    { id:'b3', title:'三、調理脾胃須單舉', badge:'B3', desc:'一手上托一手下按，身體正直。',       expect:'B3', threshold:0.85, holdFrames:24 },
+    { id:'b4', title:'四、五勞七傷向後瞧', badge:'B4', desc:'頸項鬆沉，向後顧盼。',               expect:'B4', threshold:0.85, holdFrames:24 },
+    { id:'b5', title:'五、搖頭擺尾去心火', badge:'B5', desc:'腰胯協調、轉體穩定。',               expect:'B5', threshold:0.85, holdFrames:24 },
+    { id:'b6', title:'六、兩手攀足固腎腰', badge:'B6', desc:'屈伸協調，脊柱牽引。',               expect:'B6', threshold:0.85, holdFrames:24 },
+    { id:'b7', title:'七、攢拳怒目增氣力', badge:'B7', desc:'拳走弧線、沉肩墜肘。',               expect:'B7', threshold:0.85, holdFrames:24 },
+    { id:'b8', title:'八、背後七顛百病消', badge:'B8', desc:'腳跟輕顛、呼吸綿長。',               expect:'B8', threshold:0.85, holdFrames:24 }
   ],
   LABEL_ALIASES: {
     B1: ['B1','D1','雙手托天理三焦','托天'],
@@ -125,7 +146,7 @@ const CONFIG = {
     B6: ['B6','D6','兩手攀足','固腎腰'],
     B7: ['B7','D7','攢拳怒目','增氣力'],
     B8: ['B8','D8','背後七顛','百病消']
-  },
+  ],
   BADGE_RULES: [
     { id:'silver', label:'銀牌', need:4 },
     { id:'gold', label:'金牌', need:6 },
@@ -133,15 +154,41 @@ const CONFIG = {
   ]
 };
 
-let STATE = { model:null, labels:[], webcam:null, ctx:null, raf:null, running:false, currentLevel:null, holdCount:0, expected:null };
+/* ========= 狀態 ========= */
+let STATE = {
+  model:null, labels:[], webcam:null, ctx:null, raf:null, running:false,
+  currentLevel:null, holdCount:0, expected:null, cameraFacing:'user'
+};
+
 function loadProgress(){ try { return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || { cleared:[] }; } catch(e){ return { cleared:[] }; } }
 function saveProgress(d){ localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(d)); }
 function resetProgress(){ saveProgress({ cleared:[] }); renderProgress(); }
 
+/* ========= UI ========= */
 const $levels = document.getElementById('levels');
 const $map = document.getElementById('map');
 const $progress = document.getElementById('progress');
 const $badges = document.getElementById('badges');
+const $panel = document.getElementById('panel');
+const $panelTitle = document.getElementById('panel-title');
+const $panelDesc = document.getElementById('panel-desc');
+const $btnClose = document.getElementById('btn-close');
+const $btnFull  = document.getElementById('btn-full');
+const $btnSwitch= document.getElementById('btn-switch');
+const $btnStart = document.getElementById('btn-start');
+const $btnStop  = document.getElementById('btn-stop');
+const $btnNext  = document.getElementById('btn-next');
+const $btnRedo  = document.getElementById('btn-redo');
+const $autoRun  = document.getElementById('auto-run');
+const $liveLabel= document.getElementById('live-label');
+const $meterFill= document.getElementById('meter-fill');
+const $seqList  = document.getElementById('sequence-list');
+const $toast    = document.getElementById('toast');
+const $toastText= document.getElementById('toast-text');
+const $overlay  = document.getElementById('overlay');
+const $countdown= document.getElementById('countdown');
+
+document.getElementById('btn-reset').addEventListener('click', ()=>{ if(confirm('確定要重置全部進度？')) resetProgress(); });
 
 function renderLevels(){
   const prog = loadProgress();
@@ -180,7 +227,6 @@ function renderMap(){
   const pct = Math.round((loadProgress().cleared.length/CONFIG.LEVELS.length)*100);
   $progress.style.width = pct + '%';
 }
-
 function renderBadges(){
   const c = loadProgress().cleared.length; $badges.innerHTML = '';
   CONFIG.BADGE_RULES.forEach(b=>{
@@ -193,25 +239,39 @@ function renderBadges(){
 }
 function renderProgress(){ renderLevels(); renderMap(); renderBadges(); }
 
-document.getElementById('btn-reset').addEventListener('click', ()=>{ if(confirm('確定要重置全部進度？')) resetProgress(); });
+/* ========= イベント ========= */
 $levels.addEventListener('click', (e)=>{
   const btn = e.target.closest('button'); if(!btn) return;
   const id = btn.dataset.id; const action = btn.dataset.action;
   if(action==='ai') openPanel(id);
 });
-
-const $panel = document.getElementById('panel');
-const $panelTitle = document.getElementById('panel-title');
-const $panelDesc = document.getElementById('panel-desc');
-const $btnClose = document.getElementById('btn-close');
-const $btnFull  = document.getElementById('btn-full');
-const $liveLabel = document.getElementById('live-label');
-const $meterFill = document.getElementById('meter-fill');
-const $seqList = document.getElementById('sequence-list');
-
 $btnClose.addEventListener('click', closePanel);
 $btnFull.addEventListener('click', ()=> { const fs = document.body.classList.toggle('fs'); $btnFull.textContent = fs ? '退出全螢幕' : '全螢幕'; });
+$btnStart.addEventListener('click', ()=> startLoop());
+$btnStop.addEventListener('click', ()=> stopLoop());
+$btnNext.addEventListener('click', ()=> gotoNext());
+$btnRedo.addEventListener('click', ()=> redoCurrent());
+$btnSwitch.addEventListener('click', switchCamera);
 
+/* ========= 公用 ========= */
+function toast(msg='完成！', ms=1600, color='#10b981'){
+  $toastText.textContent = msg;
+  $toast.querySelector('.box').style.background = color;
+  $toast.classList.remove('hidden');
+  setTimeout(()=> $toast.classList.add('hidden'), ms);
+}
+function vibrate(pattern=[80]){ if (navigator.vibrate) try{ navigator.vibrate(pattern); }catch{} }
+function showCountdown(n=2){
+  $overlay.style.display = 'grid';
+  let t = n;
+  $countdown.textContent = t;
+  const timer = setInterval(()=>{
+    t -= 1; $countdown.textContent = t;
+    if(t<=0){ clearInterval(timer); $overlay.style.display = 'none'; }
+  }, 1000);
+}
+
+/* ========= 面板 / 模型 ========= */
 function normalize(s){ return (s||'').toLowerCase().replace(/\s+/g,''); }
 function resolveExpectedLabel(lv){
   const labels = STATE.labels || [];
@@ -225,15 +285,26 @@ function resolveExpectedLabel(lv){
 }
 
 async function openPanel(levelId){
-  const lv = CONFIG.LEVELS.find(x=>x.id===levelId); STATE.currentLevel = lv;
-  $panelTitle.textContent = lv.title; $panelDesc.textContent = lv.desc; $panel.classList.remove('hidden');
+  const lv = CONFIG.LEVELS.find(x=>x.id===levelId);
+  STATE.currentLevel = lv;
+  $panelTitle.textContent = lv.title;
+  $panelDesc.textContent = lv.desc;
+  $panel.classList.remove('hidden');
   $seqList.innerHTML = `<li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>`;
-  await initModel(CONFIG.DEFAULT_MODEL_URL);
+
+  // 初始化模型與鏡頭（只做一次）
+  if (!STATE.model) {
+    await initModel(CONFIG.DEFAULT_MODEL_URL);
+  }
+  // 設定本關的目標標籤
   STATE.expected = resolveExpectedLabel(lv);
   $seqList.innerHTML = `
     <li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>
     <li class="px-3 py-2 rounded-lg bg-emerald-50">模型標籤：<b>${STATE.expected}</b></li>`;
+
+  if ($autoRun.checked) startLoop(); // 自動模式：進入即開始
 }
+
 function closePanel(){ stopLoop(); document.body.classList.remove('fs'); $panel.classList.add('hidden'); }
 
 async function initModel(modelURL){
@@ -245,10 +316,17 @@ async function initModel(modelURL){
     STATE.model = await tmPose.load(URL+'model.json', URL+'metadata.json');
     STATE.labels = STATE.model.getClassLabels();
 
-    const { width, height, flip, facingMode } = CONFIG.CAMERA;
+    const { width, height, flip } = CONFIG.CAMERA;
     STATE.webcam = new tmPose.Webcam(width, height, flip);
-    await STATE.webcam.setup({ facingMode });
+
+    // HTTPS 檢查
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      alert('請用 HTTPS（或 localhost）開啟，手機才允許相機。');
+      throw new Error('Insecure context');
+    }
+    await STATE.webcam.setup({ facingMode: STATE.cameraFacing });
     STATE.webcam.webcam.setAttribute('playsinline', true);
+    STATE.webcam.webcam.setAttribute('autoplay','true');
     STATE.webcam.webcam.muted = true;
     await STATE.webcam.play();
 
@@ -259,16 +337,22 @@ async function initModel(modelURL){
     STATE.ctx = STATE.webcam.canvas.getContext('2d');
 
     document.getElementById('status').textContent = '就緒';
-    document.getElementById('btn-start').onclick = startLoop;
-    document.getElementById('btn-stop').onclick = stopLoop;
   }catch(err){
     console.error(err);
-    alert('模型或鏡頭載入失敗，請檢查 URL / 權限');
+    const msg = (err && err.name) ? err.name : err;
+    if (msg === 'NotAllowedError') {
+      alert('相機權限被拒。請到瀏覽器網站設定允許相機，再重整。');
+    } else if (msg === 'NotFoundError' || msg === 'OverconstrainedError') {
+      alert('找不到鏡頭。請按「切換前/後鏡頭」或改用另一瀏覽器再試。');
+    } else if (msg !== 'Insecure context') {
+      alert('模型或鏡頭載入失敗：' + msg);
+    }
     document.getElementById('status').textContent = '錯誤';
   }
 }
 
-async function startLoop(){ if(!STATE.model||!STATE.webcam) return; STATE.running=true; STATE.holdCount=0; loop(); }
+/* ========= 偵測循環（不因換關而停） ========= */
+async function startLoop(){ if(!STATE.model||!STATE.webcam) return; if(STATE.running) return; STATE.running=true; STATE.holdCount=0; loop(); }
 function stopLoop(){ STATE.running=false; if(STATE.raf) cancelAnimationFrame(STATE.raf); document.getElementById('status').textContent='已停止'; }
 
 function drawCover(){
@@ -291,29 +375,93 @@ async function loop(){
   drawCover();
   const { posenetOutput } = await STATE.model.estimatePose(STATE.webcam.canvas);
   const prediction = await STATE.model.predict(posenetOutput);
+
   const lv = STATE.currentLevel;
   const expect = STATE.expected || lv.expect;
   const expPred = prediction.find(p => p.className === expect) || { probability: 0 };
-  document.getElementById('live-label').textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
-  document.getElementById('meter-fill').style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
+
+  $liveLabel.textContent = `${lv.title} ${(expPred.probability*100|0)}%`;
+  $meterFill.style.width = Math.min(100, Math.round(expPred.probability*100)) + '%';
+
   if(expPred.probability >= lv.threshold){
     STATE.holdCount++;
     if(STATE.holdCount >= lv.holdFrames) return pass(lv.id);
   }else{
     STATE.holdCount = Math.max(0, STATE.holdCount-1);
   }
+
   STATE.raf = requestAnimationFrame(loop);
 }
 
 function pass(levelId){
-  stopLoop();
-  const prog = loadProgress(); if(!prog.cleared.includes(levelId)) prog.cleared.push(levelId); saveProgress(prog);
+  const prog = loadProgress();
+  if(!prog.cleared.includes(levelId)) { prog.cleared.push(levelId); saveProgress(prog); renderProgress(); }
   document.getElementById('sfx-win').play();
-  alert('恭喜通關！');
-  renderProgress();
+  vibrate([60, 40, 60]);
+  toast('✅ 通關！', 1200, '#10b981');
+
+  const idx = CONFIG.LEVELS.findIndex(l => l.id === levelId);
+  const next = CONFIG.LEVELS[idx+1];
+
+  if ($autoRun.checked && next){
+    // 不中斷偵測，只是換目標前做個短倒數
+    showCountdown(2);
+    setTimeout(()=> gotoLevel(next), 2000);
+  } else if (!next) {
+    toast('🎉 全部完成！', 2000, '#f59e0b');
+    stopLoop();
+  } else {
+    // 手動模式：停下來，等待使用者按下一招/開始
+    stopLoop();
+  }
 }
 
-/* PWA：穩健註冊，避免 sw.js 404 */
+/* ========= 關卡切換 ========= */
+function gotoLevel(lv){
+  STATE.currentLevel = lv;
+  STATE.expected = resolveExpectedLabel(lv);
+  $panelTitle.textContent = lv.title;
+  $panelDesc.textContent = lv.desc;
+  $seqList.innerHTML = `
+    <li class="px-3 py-2 rounded-lg bg-slate-50">關卡：${lv.title}</li>
+    <li class="px-3 py-2 rounded-lg bg-emerald-50">模型標籤：<b>${STATE.expected}</b></li>`;
+  STATE.holdCount = 0;
+  if ($autoRun.checked) startLoop();
+}
+
+function gotoNext(){
+  if(!STATE.currentLevel) return;
+  const idx = CONFIG.LEVELS.findIndex(l=> l.id===STATE.currentLevel.id);
+  const next = CONFIG.LEVELS[idx+1];
+  if (next) gotoLevel(next);
+  else toast('已是最後一招', 1200, '#f59e0b');
+}
+function redoCurrent(){
+  if(!STATE.currentLevel) return;
+  STATE.holdCount = 0;
+  toast('重新開始本招', 800, '#6366f1');
+  if ($autoRun.checked) startLoop();
+}
+
+/* ========= 鏡頭切換 ========= */
+async function switchCamera(){
+  try{
+    if (STATE.webcam && STATE.webcam.webcam && STATE.webcam.webcam.srcObject) {
+      STATE.webcam.webcam.srcObject.getTracks().forEach(t => t.stop());
+    }
+    STATE.cameraFacing = (STATE.cameraFacing === 'user') ? 'environment' : 'user';
+    await STATE.webcam.setup({ facingMode: STATE.cameraFacing });
+    STATE.webcam.webcam.setAttribute('playsinline', true);
+    STATE.webcam.webcam.setAttribute('autoplay', 'true');
+    STATE.webcam.webcam.muted = true;
+    await STATE.webcam.play();
+  }catch(e){
+    console.error('切換鏡頭失敗：', e);
+    alert('切換鏡頭失敗，請確認瀏覽器已允許相機，或改用另一個瀏覽器開啟。');
+  }
+}
+
+/* ========= PWA（穩健註冊） ========= */
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
@@ -324,13 +472,15 @@ async function registerSW() {
 }
 document.addEventListener('DOMContentLoaded', registerSW);
 
-/* 安裝提示（可選） */
+/* ========= 安裝提示（可選） ========= */
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault(); deferredPrompt = e;
   const btn = document.getElementById('btn-install'); btn.classList.remove('hidden');
   btn.onclick = async () => { btn.disabled = true; if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; } };
 });
+
+/* ========= 啟動 ========= */
 renderProgress();
 </script>
 </body>
